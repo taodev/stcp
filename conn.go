@@ -17,7 +17,7 @@ type Conn struct {
 	conn   net.Conn
 	config *Config
 
-	ClientID int
+	ClientID uint32
 
 	gcm cipher.AEAD // AES GCM 实例
 
@@ -35,6 +35,10 @@ type Conn struct {
 	wn   int64
 
 	err error
+}
+
+func (c *Conn) ID() uint32 {
+	return c.ClientID
 }
 
 func (c *Conn) LocalAddr() net.Addr {
@@ -110,12 +114,7 @@ func (c *Conn) init(message *authPacket) error {
 		return errors.New("stcp: invalid config, no password")
 	}
 
-	c.ClientID = int(message.ClientID)
-
-	// // 使用 MD5 哈希处理密码，生成 32 字节密钥，适用于 AES-256
-	// key := sha256.Sum256([]byte(
-	// 	fmt.Sprintf("%x-%d-%d-%s", message.Nonce, message.ClientID, message.Timestamp, c.config.Password),
-	// ))
+	c.ClientID = uint32(message.ClientID)
 
 	// 使用 PBKDF2 派生密钥
 	salt := []byte(fmt.Sprintf("%x-%d-%d-%s", message.Nonce, message.ClientID, message.Timestamp, c.config.Password))

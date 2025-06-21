@@ -22,11 +22,6 @@ func Client(conn net.Conn, config *Config) *Conn {
 	}
 	c.handshakeFn = c.clientHandshake
 
-	// if err := c.clientHandshake(); err != nil {
-	// 	conn.Close()
-	// 	return nil, err
-	// }
-
 	return c
 }
 
