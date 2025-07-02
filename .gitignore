@@ -18,3 +18,5 @@
 # vendor/
 
 # Go workspace file
+examples/websocket
+/websocket

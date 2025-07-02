@@ -129,6 +129,9 @@ func (c *Conn) init(message *authPacket) error {
 }
 
 func (c *Conn) Read(b []byte) (n int, err error) {
+	if err := c.Handshake(); err != nil {
+		return 0, err
+	}
 	if c.err != nil {
 		return 0, c.err
 	}
@@ -138,6 +141,9 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 }
 
 func (c *Conn) Write(b []byte) (n int, err error) {
+	if err := c.Handshake(); err != nil {
+		return 0, err
+	}
 	if c.err != nil {
 		return 0, c.err
 	}
