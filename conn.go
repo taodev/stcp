@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -27,8 +28,8 @@ type Conn struct {
 	snappyReader *SnappyReader
 	snappyWriter *SnappyWriter
 
-	handshakeFn         func() error
-	isHandshakeComplete atomic.Bool
+	handshakeFn   func() error
+	handshakeOnce sync.Once
 
 	stat *Stat
 	rn   int64

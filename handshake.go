@@ -164,12 +164,10 @@ func (c *Conn) clientHandshake() error {
 }
 
 func (c *Conn) Handshake() error {
-	if c.isHandshakeComplete.Load() {
-		return nil
-	}
-	if err := c.handshakeFn(); err != nil {
-		return err
-	}
-	c.isHandshakeComplete.Store(true)
-	return nil
+	c.handshakeOnce.Do(func() {
+		if err := c.handshakeFn(); err != nil {
+			c.err = err
+		}
+	})
+	return c.err
 }
