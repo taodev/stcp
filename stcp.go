@@ -91,7 +91,7 @@ func dial(ctx context.Context, netDialer *net.Dialer, network, addr string, conf
 	}
 
 	conn := Client(rawConn, config)
-	if err := conn.handshakeFn(); err != nil {
+	if err := conn.Handshake(); err != nil {
 		rawConn.Close()
 		return nil, err
 	}
