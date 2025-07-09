@@ -1,7 +1,6 @@
 package stcp
 
 import (
-	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
 	"errors"
@@ -19,11 +18,12 @@ const (
 	gcmPacketCache = gcmHeaderSize + gcmPacketSize + gcmTagSize
 )
 
-type GCMReader struct {
+type SecureReader struct {
 	inner     io.Reader
 	gcm       cipher.AEAD
-	nonceBase [gcmNonceSize]byte
+	nonceBase [maxNonceSize]byte
 	nonceId   uint64
+	nonceSize int
 
 	buf   []byte
 	rbuf  []byte
@@ -32,7 +32,7 @@ type GCMReader struct {
 	err error
 }
 
-func (r *GCMReader) Close() error {
+func (r *SecureReader) Close() error {
 	r.inner = nil
 	r.gcm = nil
 	r.nonceId = 0
@@ -49,18 +49,22 @@ func (r *GCMReader) Close() error {
 	return r.err
 }
 
-func (r *GCMReader) nextNonce() []byte {
+func (r *SecureReader) nextNonce() []byte {
 	nonceId := atomic.AddUint64(&r.nonceId, 1)
-	var nonce [gcmNonceSize]byte
-	copy(nonce[:4], r.nonceBase[:4])
-	binary.BigEndian.PutUint64(nonce[4:], nonceId)
-	return nonce[:]
+	var nonce [maxNonceSize]byte
+	copy(nonce[idSizeV1:r.nonceSize], r.nonceBase[idSizeV1:])
+	binary.LittleEndian.PutUint64(nonce[:idSizeV1], nonceId)
+	return nonce[:r.nonceSize]
 }
 
-func (r *GCMReader) Read(b []byte) (n int, err error) {
+func (r *SecureReader) Read(b []byte) (n int, err error) {
 	if r.inner == nil {
 		return 0, io.ErrClosedPipe
 	}
+	if r.err != nil {
+		return 0, r.err
+	}
+
 	if r.readn <= 0 {
 		if err = r.read(); err != nil {
 			return
@@ -76,17 +80,14 @@ func (r *GCMReader) Read(b []byte) (n int, err error) {
 	return
 }
 
-func (r *GCMReader) read() (err error) {
-	if r.err != nil {
-		return r.err
-	}
+func (r *SecureReader) read() (err error) {
 	// 读取消息头
 	if _, err = io.ReadFull(r.inner, r.buf[:gcmHeaderSize]); err != nil {
 		return
 	}
 
 	// 解析消息长度
-	rawLen := binary.BigEndian.Uint16(r.buf[:gcmHeaderSize])
+	rawLen := binary.LittleEndian.Uint16(r.buf[:gcmHeaderSize])
 	if rawLen == 0 {
 		// 若消息长度为 0，视为读取到文件末尾
 		return io.EOF
@@ -122,39 +123,32 @@ func (r *GCMReader) read() (err error) {
 	return
 }
 
-func NewGCMReader(inner io.Reader, key []byte) *GCMReader {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil
-	}
-
-	r := &GCMReader{
+func NewSecureReader(inner io.Reader, aead cipher.AEAD, nonce []byte) *SecureReader {
+	r := &SecureReader{
 		inner: inner,
-		gcm:   gcm,
+		gcm:   aead,
 		buf:   mcache.Malloc(gcmPacketCache),
 	}
-	copy(r.nonceBase[:4], key[:4])
-	r.nonceId = binary.BigEndian.Uint64(key[4:12])
+	r.nonceSize = aead.NonceSize()
+	copy(r.nonceBase[idSizeV1:], nonce[idSizeV1:])
+	r.nonceId = binary.LittleEndian.Uint64(nonce[:idSizeV1])
 	r.rbuf = r.buf[gcmHeaderSize:]
 	return r
 }
 
-type GCMWriter struct {
+type SecureWriter struct {
 	inner     io.Writer
 	gcm       cipher.AEAD
-	nonceBase [gcmNonceSize]byte
+	nonceBase [maxNonceSize]byte
 	nonceId   uint64
+	nonceSize int
 
 	buf []byte
 
 	err error
 }
 
-func (w *GCMWriter) Close() error {
+func (w *SecureWriter) Close() error {
 	w.inner = nil
 	w.gcm = nil
 	w.nonceId = 0
@@ -170,17 +164,20 @@ func (w *GCMWriter) Close() error {
 	return w.err
 }
 
-func (r *GCMWriter) nextNonce() []byte {
-	nonceId := atomic.AddUint64(&r.nonceId, 1)
-	var nonce [gcmNonceSize]byte
-	copy(nonce[:4], r.nonceBase[:4])
-	binary.BigEndian.PutUint64(nonce[4:], nonceId)
-	return nonce[:]
+func (w *SecureWriter) nextNonce() []byte {
+	nonceId := atomic.AddUint64(&w.nonceId, 1)
+	var nonce [maxNonceSize]byte
+	copy(nonce[idSizeV1:w.nonceSize], w.nonceBase[idSizeV1:])
+	binary.LittleEndian.PutUint64(nonce[:idSizeV1], nonceId)
+	return nonce[:w.nonceSize]
 }
 
-func (w *GCMWriter) Write(b []byte) (n int, err error) {
+func (w *SecureWriter) Write(b []byte) (n int, err error) {
 	if w.inner == nil {
 		return 0, io.ErrClosedPipe
+	}
+	if w.err != nil {
+		return 0, w.err
 	}
 	writen := 0
 	for len(b) > 0 {
@@ -194,17 +191,14 @@ func (w *GCMWriter) Write(b []byte) (n int, err error) {
 	return
 }
 
-func (w *GCMWriter) write(b []byte) (n int, err error) {
-	if w.err != nil {
-		return 0, w.err
-	}
+func (w *SecureWriter) write(b []byte) (n int, err error) {
 	if len(b) > gcmPacketSize {
 		b = b[:gcmPacketSize]
 	}
 
 	// 写入长度
 	rawLen := gcmHeaderSize + len(b) + gcmTagSize
-	binary.BigEndian.PutUint16(w.buf[:gcmHeaderSize], uint16(rawLen-gcmHeaderSize))
+	binary.LittleEndian.PutUint16(w.buf[:gcmHeaderSize], uint16(rawLen-gcmHeaderSize))
 
 	// 加密数据
 	w.gcm.Seal(w.buf[gcmHeaderSize:gcmHeaderSize], w.nextNonce(), b, nil)
@@ -225,22 +219,14 @@ func (w *GCMWriter) write(b []byte) (n int, err error) {
 	return
 }
 
-func NewGCMWriter(inner io.Writer, key []byte) *GCMWriter {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil
-	}
-
-	w := &GCMWriter{
+func NewSecureWriter(inner io.Writer, aead cipher.AEAD, nonce []byte) *SecureWriter {
+	w := &SecureWriter{
 		inner: inner,
-		gcm:   gcm,
+		gcm:   aead,
 		buf:   mcache.Malloc(gcmPacketCache),
 	}
-	copy(w.nonceBase[:4], key[:4])
-	w.nonceId = binary.BigEndian.Uint64(key[4:12])
+	w.nonceSize = aead.NonceSize()
+	copy(w.nonceBase[idSizeV1:], nonce[idSizeV1:])
+	w.nonceId = binary.LittleEndian.Uint64(nonce[:idSizeV1])
 	return w
 }

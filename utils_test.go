@@ -1,6 +1,7 @@
 package stcp
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net"
@@ -17,6 +18,8 @@ type mockBuffer struct {
 
 	reader   io.Reader
 	readerFn func([]byte) (int, error)
+
+	directSuccess bool
 }
 
 func (buffer *mockBuffer) Write(p []byte) (n int, err error) {
@@ -28,8 +31,19 @@ func (buffer *mockBuffer) Write(p []byte) (n int, err error) {
 		return buffer.writer.Write(p)
 	}
 
+	if buffer.directSuccess {
+		return len(p), nil
+	}
+
 	args := buffer.Called(p)
 	return args.Int(0), args.Error(1)
+}
+
+func (b *mockBuffer) Bytes() []byte {
+	if b.writer != nil {
+		return b.writer.(*bytes.Buffer).Bytes()
+	}
+	return nil
 }
 
 func (buffer *mockBuffer) Read(p []byte) (n int, err error) {
@@ -39,6 +53,10 @@ func (buffer *mockBuffer) Read(p []byte) (n int, err error) {
 
 	if buffer.reader != nil {
 		return buffer.reader.Read(p)
+	}
+
+	if buffer.directSuccess {
+		return len(p), nil
 	}
 
 	args := buffer.Called(p)
@@ -54,6 +72,9 @@ type MockConn struct {
 }
 
 func (m *MockConn) Close() error {
+	if m.directSuccess {
+		return nil
+	}
 	args := m.Called()
 	return args.Error(0)
 }
@@ -69,11 +90,19 @@ func (m *MockConn) RemoteAddr() net.Addr {
 }
 
 func (m *MockConn) SetDeadline(t time.Time) error {
+	if m.directSuccess {
+		return nil
+	}
+
 	args := m.Called(t)
 	return args.Error(0)
 }
 
 func (m *MockConn) SetReadDeadline(t time.Time) error {
+	if m.directSuccess {
+		return nil
+	}
+
 	if !m.rtimeout.IsZero() {
 		return nil
 	}
@@ -83,6 +112,10 @@ func (m *MockConn) SetReadDeadline(t time.Time) error {
 }
 
 func (m *MockConn) SetWriteDeadline(t time.Time) error {
+	if m.directSuccess {
+		return nil
+	}
+
 	if !m.wtimeout.IsZero() {
 		return nil
 	}
@@ -92,30 +125,32 @@ func (m *MockConn) SetWriteDeadline(t time.Time) error {
 }
 
 func (m *MockConn) Read(b []byte) (n int, err error) {
-	if !m.rtimeout.IsZero() {
-		ch := make(chan int, 1)
-		go func() {
-			time.Sleep(time.Until(m.rtimeout))
-			ch <- 1
-		}()
+	if !m.directSuccess {
+		if !m.rtimeout.IsZero() {
+			ch := make(chan int, 1)
+			go func() {
+				time.Sleep(time.Until(m.rtimeout))
+				ch <- 1
+			}()
 
-		<-ch
-		return 0, errors.New("read timeout")
+			<-ch
+			return 0, errors.New("read timeout")
+		}
 	}
-
 	return m.mockBuffer.Read(b)
 }
 
 func (m *MockConn) Write(b []byte) (n int, err error) {
-	if !m.wtimeout.IsZero() {
-		ch := make(chan int, 1)
-		go func() {
-			time.Sleep(time.Until(m.wtimeout))
-			ch <- 1
-		}()
-		<-ch
-		return 0, errors.New("write timeout")
+	if !m.directSuccess {
+		if !m.wtimeout.IsZero() {
+			ch := make(chan int, 1)
+			go func() {
+				time.Sleep(time.Until(m.wtimeout))
+				ch <- 1
+			}()
+			<-ch
+			return 0, errors.New("write timeout")
+		}
 	}
-
 	return m.mockBuffer.Write(b)
 }

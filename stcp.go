@@ -6,28 +6,27 @@ import (
 	"net"
 )
 
-func Server(conn net.Conn, config *Config) *Conn {
+func Server(conn net.Conn, ctx *ServerContext) *Conn {
 	c := &Conn{
-		conn:   conn,
-		config: config,
+		conn:      conn,
+		serverCtx: ctx,
 	}
 	c.handshakeFn = c.serverHandshake
 	return c
 }
 
-func Client(conn net.Conn, config *Config) *Conn {
+func Client(conn net.Conn, config *ClientConfig) *Conn {
 	c := &Conn{
-		conn:   conn,
-		config: config,
+		conn:         conn,
+		clientConfig: config,
 	}
 	c.handshakeFn = c.clientHandshake
-
 	return c
 }
 
 type listener struct {
 	net.Listener
-	config *Config
+	ctx *ServerContext
 }
 
 func (l *listener) Accept() (net.Conn, error) {
@@ -35,13 +34,22 @@ func (l *listener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Server(c, l.config), nil
+	return Server(c, l.ctx), nil
 }
 
-func NewListener(inner net.Listener, config *Config) net.Listener {
+func (l *listener) Close() error {
+	err := l.Listener.Close()
+	if err != nil {
+		return err
+	}
+	l.ctx.Close()
+	return nil
+}
+
+func NewListener(inner net.Listener, ctx *ServerContext) net.Listener {
 	l := new(listener)
 	l.Listener = inner
-	l.config = config
+	l.ctx = ctx
 	return l
 }
 
@@ -51,26 +59,26 @@ func NewListener(inner net.Listener, config *Config) net.Listener {
 // 参数 address 表示监听的地址，例如 "localhost:8080"。
 // 参数 config 表示 stcp 连接的配置信息。
 // 返回值 net.Listener 是创建好的监听器，error 表示可能出现的错误。
-func Listen(network, address string, config *Config) (net.Listener, error) {
-	// 检查配置是否有效，若配置为空或者密码为空，则返回错误
-	if config == nil || len(config.Password) <= 0 {
-		return nil, errors.New("stcp: invalid config, nor password")
+func Listen(network, address string, ctx *ServerContext) (net.Listener, error) {
+	// 检查配置是否有效，若配置为空则返回错误
+	if ctx == nil {
+		return nil, errors.New("stcp: invalid ctx")
 	}
 	l, err := net.Listen(network, address)
 	if err != nil {
 		return nil, err
 	}
-	return NewListener(l, config), nil
+	return NewListener(l, ctx), nil
 }
 
-func DialWithDialer(dialer *net.Dialer, network, addr string, config *Config) (*Conn, error) {
+func DialWithDialer(dialer *net.Dialer, network, addr string, config *ClientConfig) (*Conn, error) {
 	return dial(context.Background(), dialer, network, addr, config)
 }
 
-func dial(ctx context.Context, netDialer *net.Dialer, network, addr string, config *Config) (*Conn, error) {
-	// 检查配置是否有效，若配置为空或者密码为空，则返回错误
-	if config == nil || len(config.Password) <= 0 {
-		return nil, errors.New("stcp: invalid config, nor password")
+func dial(ctx context.Context, netDialer *net.Dialer, network, addr string, config *ClientConfig) (*Conn, error) {
+	// 检查配置是否有效，若配置为空则返回错误
+	if config == nil {
+		return nil, errors.New("stcp: invalid config")
 	}
 
 	if netDialer.Timeout != 0 {
@@ -98,13 +106,13 @@ func dial(ctx context.Context, netDialer *net.Dialer, network, addr string, conf
 	return conn, nil
 }
 
-func Dial(network, addr string, config *Config) (*Conn, error) {
+func Dial(network, addr string, config *ClientConfig) (*Conn, error) {
 	return DialWithDialer(new(net.Dialer), network, addr, config)
 }
 
 type Dialer struct {
 	NetDialer *net.Dialer
-	Config    *Config
+	Config    *ClientConfig
 }
 
 func (d *Dialer) netDialer() *net.Dialer {

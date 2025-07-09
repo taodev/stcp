@@ -2,28 +2,23 @@ package stcp
 
 import (
 	"crypto/cipher"
-	"crypto/sha256"
-	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"golang.org/x/crypto/pbkdf2"
 )
 
 type Conn struct {
-	conn   net.Conn
-	config *Config
+	conn net.Conn
 
-	ClientID uint32
+	clientConfig *ClientConfig
+	serverCtx    *ServerContext
 
 	gcm cipher.AEAD // AES GCM 实例
 
-	gcmReader *GCMReader
-	gcmWriter *GCMWriter
+	gcmReader *SecureReader
+	gcmWriter *SecureWriter
 
 	snappyReader *SnappyReader
 	snappyWriter *SnappyWriter
@@ -36,10 +31,6 @@ type Conn struct {
 	wn   int64
 
 	err error
-}
-
-func (c *Conn) ID() uint32 {
-	return c.ClientID
 }
 
 func (c *Conn) LocalAddr() net.Addr {
@@ -91,7 +82,8 @@ func (c *Conn) Close() (err error) {
 	}
 
 	c.conn = nil
-	c.config = nil
+	c.clientConfig = nil
+	c.serverCtx = nil
 
 	c.gcm = nil
 
@@ -110,20 +102,18 @@ func (c *Conn) Close() (err error) {
 	return err
 }
 
-func (c *Conn) init(message *authPacket) error {
-	if c.config == nil || c.config.Password == "" {
-		return errors.New("stcp: invalid config, no password")
-	}
-
-	c.ClientID = uint32(message.ClientID)
-
-	// 使用 PBKDF2 派生密钥
-	salt := []byte(fmt.Sprintf("%x-%d-%d-%s", message.Nonce, message.ClientID, message.Timestamp, c.config.Password))
-	key := pbkdf2.Key([]byte(c.config.Password), salt, 4096, 32, sha256.New)
-
+func (c *Conn) init(newAEAD newAEAD, key, nonce []byte) error {
 	c.stat = WrapStat(c.conn)
-	c.gcmReader = NewGCMReader(c.stat, key[:])
-	c.gcmWriter = NewGCMWriter(c.stat, key[:])
+	aeadReader, err := newAEAD(key)
+	if err != nil {
+		return err
+	}
+	c.gcmReader = NewSecureReader(c.stat, aeadReader, nonce)
+	aeadWriter, err := newAEAD(key)
+	if err != nil {
+		return err
+	}
+	c.gcmWriter = NewSecureWriter(c.stat, aeadWriter, nonce)
 	c.snappyReader = NewSnappyReader(c.gcmReader)
 	c.snappyWriter = NewSnappyWriter(c.gcmWriter)
 	return nil

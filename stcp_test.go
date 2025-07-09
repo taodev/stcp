@@ -2,6 +2,7 @@ package stcp
 
 import (
 	"context"
+	"encoding/hex"
 	"net"
 	"testing"
 	"time"
@@ -10,10 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var testConfig = &Config{
-	ID:       1,
-	Password: "testpassword",
-}
+// var testConfig = &Config{
+// 	ID:       1,
+// 	Password: "testpassword",
+// }
 
 func newLocalListener(t testing.TB) net.Listener {
 	t.Helper()
@@ -28,6 +29,18 @@ func newLocalListener(t testing.TB) net.Listener {
 }
 
 func TestSTCP(t *testing.T) {
+	clientKey, _ := hex.DecodeString("bd576b064485a8b48e34dd0944dd3103ff41eb25634f9c65210878efad5ff456")
+	// clientPub, _ := hex.DecodeString("8eecad2858324bce6c6dc22d3042f8bdcdff1d7ca6505a2d1026334dbfdfcc43")
+	serverKey, _ := hex.DecodeString("2ec32e40b1e7db6a890d2177d24062029210bab921bf74f1c4baaf3abde56a7d")
+	serverPub, _ := hex.DecodeString("dd5a10ba96106062511848ab9cd91b1eeaf1816698950ef89bfb0cf4e19b8078")
+
+	clientConfig, _ := NewClientConfig()
+	clientConfig.PrivateKey = clientKey
+	clientConfig.ServerPub = serverPub
+
+	serverCtx, _ := NewServerContext()
+	serverCtx.PrivateKey = serverKey
+
 	t.Run("dial timeout", func(t *testing.T) {
 		if testing.Short() {
 			t.Skip("skipping test in short mode.")
@@ -52,7 +65,7 @@ func TestSTCP(t *testing.T) {
 			dialer := &net.Dialer{
 				Timeout: timeout,
 			}
-			if conn, err := DialWithDialer(dialer, "tcp", addr, testConfig); err == nil {
+			if conn, err := DialWithDialer(dialer, "tcp", addr, clientConfig); err == nil {
 				conn.Close()
 				t.Errorf("DialWithTimeout unexpectedly completed successfully")
 			} else if !isTimeoutError(err) {
@@ -99,7 +112,7 @@ func TestSTCP(t *testing.T) {
 				srvCh <- nil
 				return
 			}
-			srv := Server(sconn, testConfig.Clone())
+			srv := Server(sconn, serverCtx)
 			if err := srv.Handshake(); err != nil {
 				srvCh <- nil
 				return
@@ -107,7 +120,6 @@ func TestSTCP(t *testing.T) {
 			srvCh <- srv
 		}()
 
-		clientConfig := testConfig.Clone()
 		conn, err := Dial("tcp", ln.Addr().String(), clientConfig)
 		if err != nil {
 			t.Fatal(err)
@@ -165,17 +177,25 @@ func TestSTCP(t *testing.T) {
 			<-unblockServer
 		}()
 
-		d := Dialer{Config: &Config{
-			Password: "testpassword",
-		}}
+		cfg, _ := NewClientConfig()
+		cfg.PrivateKey = clientKey
+		cfg.ServerPub = serverPub
+
+		d := Dialer{Config: cfg}
 		_, err := d.DialContext(context.Background(), "tcp", ln.Addr().String())
 		assert.NoError(t, err)
 	})
 
 	t.Run("succesful", func(t *testing.T) {
-		ln, err := Listen("tcp", ":0", &Config{
-			Password: "testpassword",
-		})
+		clientConfig, _ := NewClientConfig()
+		clientConfig.PrivateKey = clientKey
+		clientConfig.ServerPub = serverPub
+
+		serverCtx, _ := NewServerContext()
+		serverCtx.PrivateKey = serverKey
+		defer serverCtx.Close()
+
+		ln, err := Listen("tcp", ":0", serverCtx)
 		require.NoError(t, err)
 		defer ln.Close()
 
@@ -199,9 +219,7 @@ func TestSTCP(t *testing.T) {
 			_, err = sconn.Write(pong)
 			require.NoError(t, err)
 		}()
-		conn, err := Dial("tcp", ln.Addr().String(), &Config{
-			Password: "testpassword",
-		})
+		conn, err := Dial("tcp", ln.Addr().String(), clientConfig)
 		require.NoError(t, err)
 		defer conn.Close()
 
