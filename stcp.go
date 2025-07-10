@@ -7,10 +7,6 @@ import (
 )
 
 func Server(conn net.Conn, ctx *ServerContext) *Conn {
-	if len(ctx.PrivateKey) == 0 {
-		ctx.PrivateKey = PrivateKey()
-	}
-
 	c := &Conn{
 		conn:      conn,
 		serverCtx: ctx,
@@ -20,12 +16,6 @@ func Server(conn net.Conn, ctx *ServerContext) *Conn {
 }
 
 func Client(conn net.Conn, config *ClientConfig) *Conn {
-	if len(config.PrivateKey) == 0 {
-		config.PrivateKey = PrivateKey()
-	}
-	if len(config.ServerPub) == 0 {
-		config.ServerPub = HostKey(conn.RemoteAddr().String())
-	}
 	c := &Conn{
 		conn:         conn,
 		clientConfig: config,
