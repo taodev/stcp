@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"os"
 	"strings"
+
+	"github.com/taodev/pkg/types"
 )
 
 func PublicKey(privateKey string) (publicKey string, err error) {
 	curve := ecdh.X25519()
-	keyBytes, err := base64.RawURLEncoding.DecodeString(privateKey)
-	if err != nil {
+	var keyBytes types.Binary
+	if err = keyBytes.Parse(privateKey); err != nil {
 		return
 	}
 	key, err := curve.NewPrivateKey(keyBytes)
@@ -47,4 +49,24 @@ func KeyGen(keyPath string) (publicKey string, err error) {
 	// 去掉 tab
 	keyString = strings.Trim(keyString, `\t`)
 	return PublicKey(keyString)
+}
+
+func ReadKey(keyPath string) (key []byte, err error) {
+	keyBytes, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, err
+	}
+	// 去掉空格
+	keyString := strings.TrimSpace(string(keyBytes))
+	// 去掉换行
+	keyString = strings.Trim(keyString, `\n`)
+	keyString = strings.Trim(keyString, `\r`)
+	// 去掉 tab
+	keyString = strings.Trim(keyString, `\t`)
+
+	key, err = base64.RawURLEncoding.DecodeString(keyString)
+	if err != nil {
+		return nil, err
+	}
+	return key, nil
 }
