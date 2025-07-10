@@ -15,11 +15,9 @@ func main() {
 	}
 
 	fmt.Printf("Private Key:\n")
-	fmt.Printf("hex: %x\n", privateKey.Bytes())
-	fmt.Println("base64:", base64.RawStdEncoding.EncodeToString(privateKey.Bytes()))
+	fmt.Println(base64.RawURLEncoding.EncodeToString(privateKey.Bytes()))
 
 	publicKey := privateKey.PublicKey()
 	fmt.Printf("Public Key:\n")
-	fmt.Printf("hex: %x\n", publicKey.Bytes())
-	fmt.Println("base64:", base64.RawStdEncoding.EncodeToString(publicKey.Bytes()))
+	fmt.Println(base64.RawURLEncoding.EncodeToString(publicKey.Bytes()))
 }
