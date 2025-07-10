@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/ecdh"
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 )
 
@@ -13,8 +14,12 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Printf("Private Key: %x\n", privateKey.Bytes())
+	fmt.Printf("Private Key:\n")
+	fmt.Printf("hex: %x\n", privateKey.Bytes())
+	fmt.Println("base64:", base64.RawStdEncoding.EncodeToString(privateKey.Bytes()))
 
 	publicKey := privateKey.PublicKey()
-	fmt.Printf("Public Key: %x\n", publicKey.Bytes())
+	fmt.Printf("Public Key:\n")
+	fmt.Printf("hex: %x\n", publicKey.Bytes())
+	fmt.Println("base64:", base64.RawStdEncoding.EncodeToString(publicKey.Bytes()))
 }
