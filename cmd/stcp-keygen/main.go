@@ -5,28 +5,35 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/taodev/stcp/keygen"
+	"github.com/taodev/pkg/types"
+	"github.com/taodev/stcp/key"
 )
 
 func main() {
-	keypath := flag.String("f", "id_stcp", "save path")
-	key := flag.String("k", "", "private key")
+	keyPath := flag.String("f", "id_stcp", "save path")
+	keyValue := flag.String("k", "", "private key")
 	flag.Parse()
 
-	if *key != "" {
-		pub, err := keygen.PublicKey(*key)
+	var privateKey types.Binary
+	var err error
+	if *keyValue != "" {
+		privateKey, err = key.Base64(*keyValue)
 		if err != nil {
-			fmt.Println("PublicKey err:", err)
+			fmt.Println("Base64 err:", err)
 			os.Exit(1)
 		}
-		fmt.Println(pub)
-		return
+	} else {
+		privateKey, err = key.Generate(*keyPath)
+		if err != nil {
+			fmt.Println("Generate err:", err)
+			os.Exit(1)
+		}
 	}
 
-	pub, err := keygen.KeyGen(*keypath)
+	publicKey, err := key.PublicKey(privateKey)
 	if err != nil {
-		fmt.Println("KeyGen err:", err)
+		fmt.Println("PublicKey err:", err)
 		os.Exit(1)
 	}
-	fmt.Println(pub)
+	fmt.Println("publicKey:", publicKey)
 }
