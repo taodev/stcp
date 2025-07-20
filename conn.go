@@ -104,6 +104,14 @@ func (c *Conn) Close() (err error) {
 
 func (c *Conn) init(newAEAD newAEAD, key, nonce []byte) error {
 	c.stat = WrapStat(c.conn)
+	if c.clientConfig != nil {
+		c.stat.rL = c.clientConfig.GetReadLimiter()
+		c.stat.wL = c.clientConfig.GetWriteLimiter()
+	} else if c.serverCtx != nil {
+		c.stat.rL = c.serverCtx.GetReadLimiter()
+		c.stat.wL = c.serverCtx.GetWriteLimiter()
+	}
+
 	aeadReader, err := newAEAD(key)
 	if err != nil {
 		return err

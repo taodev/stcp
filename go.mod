@@ -10,6 +10,7 @@ require (
 	github.com/taodev/pkg v0.1.11
 	github.com/xtaci/smux v1.5.34
 	golang.org/x/crypto v0.39.0
+	golang.org/x/time v0.12.0
 )
 
 require (

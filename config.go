@@ -11,6 +11,8 @@ import (
 )
 
 type ClientConfig struct {
+	LimitConfig
+
 	Rand io.Reader `yaml:"-"`
 
 	// 握手超时时间
@@ -30,6 +32,8 @@ type ClientConfig struct {
 }
 
 type ServerContext struct {
+	LimitConfig
+
 	Rand io.Reader `yaml:"-"`
 
 	// 握手超时时间
