@@ -26,6 +26,9 @@ type ClientConfig struct {
 	// 服务端公钥
 	ServerPub []byte `yaml:"server_pub"`
 
+	// 密码握手: 设置后优先于 ECDH 握手使用
+	Password string `yaml:"password"`
+
 	// 加密类型
 	// 支持 aes-256-gcm, chacha20-poly1305, xchacha20-poly1305
 	CryptoType string `yaml:"crypto_type" default:"aes-256-gcm"`
@@ -50,6 +53,9 @@ type ServerContext struct {
 	// 公钥认证: 使用 ecdh, 推荐
 	AuthorizedKeys [][]byte `yaml:"authorized_keys"`
 	AuthorizedPath string   `yaml:"authorized_path"`
+
+	// 密码握手: 设置后优先于 ECDH 握手使用
+	Password string `yaml:"password"`
 
 	// 加密类型
 	// 支持 aes-256-gcm, chacha20-poly1305, xchacha20-poly1305

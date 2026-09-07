@@ -233,6 +233,83 @@ func TestSTCP(t *testing.T) {
 		inR, inW, outR, outW := conn.Stat()
 		t.Logf("inR: %d, inW: %d, outR: %d, outW: %d", inR, inW, outR, outW)
 	})
+
+	t.Run("password handshake", func(t *testing.T) {
+		clientConfig, _ := NewClientConfig()
+		clientConfig.Password = "testpassword"
+
+		serverCtx, _ := NewServerContext()
+		serverCtx.Password = "testpassword"
+		defer serverCtx.Close()
+
+		ln, err := Listen("tcp", ":0", serverCtx)
+		require.NoError(t, err)
+		defer ln.Close()
+
+		ping := []byte("hello server!")
+		pong := []byte("hello client!")
+		go func() {
+			sconn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+
+			if err = sconn.(*Conn).Handshake(); err != nil {
+				return
+			}
+
+			buf := make([]byte, 128)
+			n, err := sconn.Read(buf)
+			require.NoError(t, err)
+			assert.Equal(t, ping, buf[:n])
+
+			_, err = sconn.Write(pong)
+			require.NoError(t, err)
+		}()
+		conn, err := Dial("tcp", ln.Addr().String(), clientConfig)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.Write(ping)
+		require.NoError(t, err)
+		buf := make([]byte, 128)
+		n, err := conn.Read(buf)
+		require.NoError(t, err)
+		assert.Equal(t, pong, buf[:n])
+	})
+
+	t.Run("password handshake wrong password", func(t *testing.T) {
+		// 客户端握手是单向发送, Dial 本身不会失败;
+		// 服务端会因为解密/校验失败而拒绝握手并关闭连接。
+		clientConfig, _ := NewClientConfig()
+		clientConfig.Password = "wrongpassword"
+
+		serverCtx, _ := NewServerContext()
+		serverCtx.Password = "testpassword"
+		defer serverCtx.Close()
+
+		ln, err := Listen("tcp", ":0", serverCtx)
+		require.NoError(t, err)
+		defer ln.Close()
+
+		srvErrCh := make(chan error, 1)
+		go func() {
+			sconn, err := ln.Accept()
+			if err != nil {
+				srvErrCh <- err
+				return
+			}
+			defer sconn.Close()
+			srvErrCh <- sconn.(*Conn).Handshake()
+		}()
+
+		conn, err := Dial("tcp", ln.Addr().String(), clientConfig)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		srvErr := <-srvErrCh
+		require.Error(t, srvErr)
+	})
 }
 
 func isTimeoutError(err error) bool {

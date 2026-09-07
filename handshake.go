@@ -16,7 +16,12 @@ func (c *Conn) serverHandshake() (err error) {
 	if err = c.conn.SetReadDeadline(time.Now().Add(c.serverCtx.HandshakeTimeout)); err != nil {
 		return err
 	}
-	info, err := serverHandshake(c.conn, c.serverCtx)
+	var info *handshakeInfo
+	if len(c.serverCtx.Password) > 0 {
+		info, err = serverHandshakePassword(c.conn, c.serverCtx)
+	} else {
+		info, err = serverHandshake(c.conn, c.serverCtx)
+	}
 	if err != nil {
 		return err
 	}
@@ -33,7 +38,12 @@ func (c *Conn) clientHandshake() (err error) {
 	if err = c.conn.SetWriteDeadline(time.Now().Add(c.clientConfig.HandshakeTimeout)); err != nil {
 		return err
 	}
-	info, err := clientHandshake(c.conn, c.clientConfig)
+	var info *handshakeInfo
+	if len(c.clientConfig.Password) > 0 {
+		info, err = clientHandshakePassword(c.conn, c.clientConfig)
+	} else {
+		info, err = clientHandshake(c.conn, c.clientConfig)
+	}
 	if err != nil {
 		return err
 	}
